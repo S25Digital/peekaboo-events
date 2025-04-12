@@ -1,129 +1,119 @@
-# 👻 peekaboo-events
+# Peekaboo Events
 
-> A lightweight, frontend-only analytics tracker that captures user interactions in React apps and sends them to a backend without blocking the UI. Powered by `sendBeacon`, custom hooks, and React lifecycle awareness — it's analytics with a stealth mode.
+Peekaboo Events is a lightweight, non-blocking analytics hook for React that leverages `sendBeacon` to send event data to your backend. It's designed to track component lifecycle events and custom analytics without affecting the user experience.
 
----
+## Installation
 
-## ✨ Features
+To install `peekaboo-events` in your React project, run the following command:
 
-- ⚛️ Simple React hook integration (`useAnalytics`)
-- 📦 Non-blocking, batched event tracking
-- 🚪 Sends data on page unload or component unmount
-- 🧠 Uses `sendBeacon` if available (fallbacks to `fetch`)
-- 🌍 Global analytics script to plug into any frontend
-- 🔧 Fully customizable & backend-agnostic
-
----
-
-## 🚀 Getting Started
-
-### 1. Add the Global Analytics Script
-
-Place `analytics.js` in your `public/` folder and load it in your `index.html`:
-
-```html
-<!-- public/index.html -->
-<script src="/analytics.js" async></script>
+```bash
+npm install peekaboo-events
 ```
 
-> This sets up a global `window.analytics` object for event tracking.
+or using Yarn:
 
----
+```bash
+yarn add peekaboo-events
+```
 
-### 2. Add the Hook to Your React App
+## Usage
 
-Copy `useAnalytics.js` to your project:
+To use the `useAnalytics` hook in your React components, simply import it and start tracking events.
 
-```js
-// src/hooks/useAnalytics.js
-import { useEffect, useRef } from "react";
+### Example
 
-export default function useAnalytics(componentName = "") {
-  const hasUnmounted = useRef(false);
+```tsx
+import React, { useEffect } from 'react';
+import { useAnalytics } from 'peekaboo-events';
 
-  const trackEvent = (eventData) => {
-    if (typeof window !== "undefined" && window.analytics) {
-      window.analytics.track({
-        ...eventData,
-        component: componentName,
-      });
-    }
-  };
+const MyComponent = () => {
+  const { trackEvent, trackingUrl } = useAnalytics("MyComponent", {
+    trackingUrl: "https://my-custom-backend.com/api/analytics"  // Dynamically set tracking URL
+  });
 
   useEffect(() => {
+    trackEvent({ event: "component_mounted" });
+
     return () => {
-      if (!hasUnmounted.current && typeof window !== "undefined" && window.analytics) {
-        window.analytics.track({
-          event: "component_unmounted",
-          component: componentName,
-        });
-        window.analytics.flush();
-        hasUnmounted.current = true;
-      }
+      trackEvent({ event: "component_unmounted" });
     };
-  }, [componentName]);
-
-  return { trackEvent };
-}
-```
-
----
-
-### 3. Use in Components
-
-```jsx
-import React from "react";
-import useAnalytics from "./hooks/useAnalytics";
-
-function SignupButton() {
-  const { trackEvent } = useAnalytics("SignupButton");
+  }, [trackEvent]);
 
   return (
-    <button onClick={() => trackEvent({ event: "signup_click" })}>
-      Sign Up
-    </button>
+    <div>
+      Welcome to My Component!
+      <br />
+      Current Tracking URL: {trackingUrl}
+    </div>
   );
-}
+};
+
+export default MyComponent;
+```
+
+### Custom Event Tracking
+
+You can track custom events by calling `trackEvent` with your desired event name and data.
+
+```tsx
+trackEvent({
+  event: "button_clicked",
+  data: { buttonId: "submit" }
+});
+```
+
+## How It Works
+
+1. **Automatic Event Tracking**: The hook automatically tracks when the component is mounted and unmounted.
+2. **Non-blocking**: It uses the `sendBeacon` API to send data to your backend without blocking the UI or affecting user experience.
+3. **Custom Events**: You can manually track any custom events by calling `trackEvent` with the event details.
+4. **Configurable Tracking URL**: You can configure the tracking URL for event data. If not set, it will use the default URL provided in the hook.
+
+### Configuring the Tracking URL
+
+The `useAnalytics` hook accepts an optional configuration object, allowing you to set the tracking URL dynamically.
+
+```tsx
+const { trackEvent, trackingUrl } = useAnalytics("MyComponent", {
+  trackingUrl: "https://my-custom-backend.com/api/analytics"  // Pass custom URL
+});
+```
+
+The tracking URL can also be set globally, making it flexible to switch between different backends or endpoints.
+
+## Backend Integration
+
+This package is designed to send event data to your backend for persistence. By default, it sends events to the URL defined in the `trackingUrl`. You can override this URL using the configuration.
+
+```ts
+const TRACKING_URL = "https://your-backend.com/api/analytics"; // Default URL
+```
+
+## Notes
+
+- The package uses the `sendBeacon` API for non-blocking background requests, making it suitable for tracking events without interrupting the user experience.
+- The `trackEvent` function adds metadata to each event, including the component name and a timestamp, which can be useful for debugging or analysis.
+  
+## Files Included
+
+The package includes the following files:
+
+- **`src/`**: The source code for the package, including the `useAnalytics` hook.
+- **`dist/`**: The compiled and minified output for distribution.
+- **`package.json`**: The package metadata and build scripts.
+
+## Contributing
+
+Feel free to open issues or submit pull requests. Contributions are welcome!
+
+## License
+
+MIT License. See [LICENSE](./LICENSE) for details.
+
 ```
 
 ---
 
-## 🌐 Customization
-
-By default, `analytics.js` sends data to:
-
-```js
-const endpoint = "https://your-backend.com/api/analytics";
-```
-
-Change this in `analytics.js` to point to your backend, API gateway, or serverless function.
-
----
-
-## 💡 Tips
-
-- You can track route changes, scrolls, visibility changes, etc.
-- Hook can be wrapped in a custom `AnalyticsProvider` for auto-context
-- Works great with SSR-friendly frameworks like Next.js
-
----
-
-## 🧪 Test it Out
-
-Open DevTools → Network → click a button → watch batched analytics POSTs go out. Or close the tab and check `sendBeacon` in action 🚀
-
----
-
-## 🛡️ Disclaimer
-
-This project is frontend-only — you'll need to build or connect your own backend to receive and store analytics.
-
----
-
-## 📜 License
-
-MIT — Use it, fork it, break it, improve it.
-
----
-
-## 🎉 Built for fun, tracking with love
+### Key Updates:
+1. **Configurable Tracking URL**: The README now mentions that you can dynamically set the tracking URL via the configuration passed to the `useAnalytics` hook.
+2. **Example Usage**: The example usage section demonstrates how to pass the custom URL to the hook.

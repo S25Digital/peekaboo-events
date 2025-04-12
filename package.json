@@ -1,0 +1,33 @@
+{
+  "name": "peekaboo-events",
+  "version": "1.0.0",
+  "description": "Non-blocking React analytics hook powered by sendBeacon",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "keywords": [
+    "react",
+    "analytics",
+    "hook",
+    "event-tracking"
+  ],
+  "author": "Simranjeet Singh",
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "^18.3.1"
+  },
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.1",
+    "react": "^19.1.0",
+    "typescript": "^4.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist/"
+  ]
+}
