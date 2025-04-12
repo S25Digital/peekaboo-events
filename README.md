@@ -15,21 +15,6 @@
 
 ---
 
-## 📁 Folder Structure (Frontend Only)
-
-```
-peekaboo-events/
-├── public/
-│   └── analytics.js        # Global event tracking script
-├── src/
-│   └── hooks/
-│       └── useAnalytics.js # React hook for tracking events
-├── App.jsx or component.js # Where you use the hook
-└── README.md
-```
-
----
-
 ## 🚀 Getting Started
 
 ### 1. Add the Global Analytics Script
