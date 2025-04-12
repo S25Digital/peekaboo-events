@@ -109,11 +109,3 @@ Feel free to open issues or submit pull requests. Contributions are welcome!
 ## License
 
 MIT License. See [LICENSE](./LICENSE) for details.
-
-```
-
----
-
-### Key Updates:
-1. **Configurable Tracking URL**: The README now mentions that you can dynamically set the tracking URL via the configuration passed to the `useAnalytics` hook.
-2. **Example Usage**: The example usage section demonstrates how to pass the custom URL to the hook.
