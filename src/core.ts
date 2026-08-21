@@ -24,6 +24,15 @@ export interface TrackedEvent {
   timestamp: string;
 }
 
+/**
+ * A middleware function runs on every event right before it's queued.
+ * Return the event (possibly modified) to let it through, or return
+ * `null` to drop it entirely (e.g. a consent gate, a dev-mode logger,
+ * or a PII scrubber). Middlewares run in registration order; the
+ * output of one becomes the input to the next.
+ */
+export type Middleware = (event: TrackedEvent) => TrackedEvent | null;
+
 export interface AnalyticsConfig {
   trackingUrl: string;
   instanceId: string;
@@ -42,6 +51,11 @@ export interface AnalyticsConfig {
    * if the same key is used in both.
    */
   defaultProperties?: Record<string, unknown>;
+  /**
+   * Middlewares to register at init time, run in array order.
+   * Equivalent to calling `use()` for each one before any tracking happens.
+   */
+  middlewares?: Middleware[];
 }
 
 let config: AnalyticsConfig | null = null;
@@ -51,6 +65,7 @@ let currentUserId: string | undefined;
 let cachedDistinctId: string | undefined;
 let cachedSessionId: string | undefined;
 let cachedUAResult: ReturnType<typeof UAParser> | null = null;
+let middlewares: Middleware[] = [];
 
 const DISTINCT_ID_KEY = '__peekaboo_distinct_id';
 const SESSION_ID_KEY = '__peekaboo_session_id';
@@ -144,6 +159,10 @@ function collectAutoProperties(onScreen?: string): AnalyticsProperties {
 export function initAnalytics(cfg: AnalyticsConfig) {
   config = { flushIntervalMs: 5000, maxQueueSize: 20, ...cfg };
 
+  if (cfg.middlewares?.length) {
+    middlewares.push(...cfg.middlewares);
+  }
+
   if (typeof window !== 'undefined' && !flushTimer) {
     flushTimer = setInterval(flush, config.flushIntervalMs);
     window.addEventListener('beforeunload', flush);
@@ -151,6 +170,16 @@ export function initAnalytics(cfg: AnalyticsConfig) {
       if (document.visibilityState === 'hidden') flush();
     });
   }
+}
+
+/**
+ * Register a middleware to run on every event before it's queued.
+ * Can be called any time, including after initAnalytics — useful for
+ * middlewares that depend on runtime state (e.g. a consent flag that
+ * flips after the user accepts a cookie banner).
+ */
+export function use(middleware: Middleware) {
+  middlewares.push(middleware);
 }
 
 /**
@@ -210,13 +239,29 @@ export interface TrackInput {
   properties?: Record<string, unknown>;
 }
 
+function runMiddlewares(event: TrackedEvent): TrackedEvent | null {
+  let current: TrackedEvent | null = event;
+  for (const middleware of middlewares) {
+    if (current === null) break;
+    try {
+      current = middleware(current);
+    } catch (err) {
+      // A misbehaving middleware shouldn't take down tracking entirely —
+      // drop just this event and continue, rather than throwing.
+      console.error('[peekaboo-events] middleware threw, dropping event:', err);
+      return null;
+    }
+  }
+  return current;
+}
+
 export function track(input: TrackInput) {
   if (!config) return; // not initialized — drop rather than buffer indefinitely
 
   const auto = collectAutoProperties(input.onScreen);
   const eventTimestamp = new Date().toISOString();
 
-  const trackedEvent: TrackedEvent = {
+  let trackedEvent: TrackedEvent | null = {
     uuid: safeUUID(),
     event: input.event,
     timestamp: eventTimestamp,
@@ -226,6 +271,12 @@ export function track(input: TrackInput) {
       ...input.properties,         // per-call, most specific — wins over both above
     },
   };
+
+  if (middlewares.length) {
+    trackedEvent = runMiddlewares(trackedEvent);
+  }
+
+  if (trackedEvent === null) return; // a middleware vetoed this event
 
   eventQueue.push(trackedEvent);
 
@@ -246,4 +297,5 @@ export function __resetForTests() {
   cachedDistinctId = undefined;
   cachedSessionId = undefined;
   cachedUAResult = null;
+  middlewares = [];
 }
