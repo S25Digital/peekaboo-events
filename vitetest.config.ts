@@ -6,12 +6,13 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: false, // we import describe/it/expect explicitly, matches the test files written
+    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
     setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
       include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/**/*.test.ts', 'src/**/*.test.tsx', 'src/index.ts'],
+      exclude: ['src/index.ts'],
     },
   },
 });
