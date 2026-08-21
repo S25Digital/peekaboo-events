@@ -5,6 +5,7 @@ import {
   reset,
   track,
   flush,
+  addMiddleware,
   __resetForTests,
 } from '../src/core';
 
@@ -325,5 +326,122 @@ describe('onScreen', () => {
     const body = await readBeaconPayload(blob);
 
     expect(body.events[0].properties.onScreen).toBeUndefined();
+  });
+});
+
+describe('addMiddleware', () => {
+  it('lets an event through unchanged when the middleware returns it as-is', async () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    addMiddleware((event) => event);
+
+    track({ event: 'e1' });
+    flush();
+
+    const [, blob] = getLastBeaconCall();
+    const body = await readBeaconPayload(blob);
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].event).toBe('e1');
+  });
+
+  it('drops the event entirely when a middleware returns null', () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    addMiddleware(() => null);
+
+    track({ event: 'e1' });
+    flush();
+
+    expect(navigator.sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it('allows a middleware to modify the event before it is queued', async () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    addMiddleware((event) => {
+      delete event.properties.rawUserAgent;
+      return event;
+    });
+
+    track({ event: 'e1' });
+    flush();
+
+    const [, blob] = getLastBeaconCall();
+    const body = await readBeaconPayload(blob);
+    expect(body.events[0].properties.rawUserAgent).toBeUndefined();
+  });
+
+  it('chains multiple middlewares in registration order, feeding output to the next', async () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    addMiddleware((event) => ({ ...event, properties: { ...event.properties, step1: true } }));
+    addMiddleware((event) => ({ ...event, properties: { ...event.properties, step2: true } }));
+
+    track({ event: 'e1' });
+    flush();
+
+    const [, blob] = getLastBeaconCall();
+    const body = await readBeaconPayload(blob);
+    expect(body.events[0].properties.step1).toBe(true);
+    expect(body.events[0].properties.step2).toBe(true);
+  });
+
+  it('stops running further middlewares once one vetoes the event', () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    const secondMiddleware = vi.fn((event) => event);
+    addMiddleware(() => null);
+    addMiddleware(secondMiddleware);
+
+    track({ event: 'e1' });
+    flush();
+
+    expect(secondMiddleware).not.toHaveBeenCalled();
+    expect(navigator.sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it('drops only the offending event if a middleware throws, without crashing tracking', () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    addMiddleware(() => {
+      throw new Error('boom');
+    });
+
+    expect(() => track({ event: 'e1' })).not.toThrow();
+    flush();
+
+    expect(navigator.sendBeacon).not.toHaveBeenCalled();
+    expect(consoleSpy).toHaveBeenCalled();
+  });
+
+  it('continues tracking subsequent events normally after a middleware throws once', async () => {
+    initAnalytics({ trackingUrl: TRACKING_URL, instanceId: 'inst-1', key: 'k-1' });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    let shouldThrow = true;
+    addMiddleware((event) => {
+      if (shouldThrow) {
+        shouldThrow = false;
+        throw new Error('boom');
+      }
+      return event;
+    });
+
+    track({ event: 'will_be_dropped' });
+    track({ event: 'will_succeed' });
+    flush();
+
+    const [, blob] = getLastBeaconCall();
+    const body = await readBeaconPayload(blob);
+    expect(body.events).toHaveLength(1);
+    expect(body.events[0].event).toBe('will_succeed');
+  });
+
+  it('accepts middlewares registered via initAnalytics config as well as addMiddleware', () => {
+    initAnalytics({
+      trackingUrl: TRACKING_URL,
+      instanceId: 'inst-1',
+      key: 'k-1',
+      middlewares: [() => null],
+    });
+
+    track({ event: 'e1' });
+    flush();
+
+    expect(navigator.sendBeacon).not.toHaveBeenCalled();
   });
 });
