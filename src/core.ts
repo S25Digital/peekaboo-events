@@ -27,9 +27,21 @@ export interface TrackedEvent {
 export interface AnalyticsConfig {
   trackingUrl: string;
   instanceId: string;
-  key: string; // signing/integrity token issued by your backend, static per instance
+  /**
+   * Opaque encrypted identifier string issued by your backend.
+   * Sent as-is with every event in `properties.key`. Not generated
+   * or interpreted client-side — treat it as an unreadable token.
+   */
+  key: string;
   flushIntervalMs?: number;
   maxQueueSize?: number;
+  /**
+   * Properties merged into every tracked event automatically
+   * (e.g. appVersion, environment, buildNumber). Per-call
+   * `properties` passed to `track()` take precedence over these
+   * if the same key is used in both.
+   */
+  defaultProperties?: Record<string, unknown>;
 }
 
 let config: AnalyticsConfig | null = null;
@@ -141,10 +153,16 @@ export function initAnalytics(cfg: AnalyticsConfig) {
   }
 }
 
+/**
+ * Associate subsequent events with a known user. Call after login/auth resolves.
+ */
 export function identify(userId: string) {
   currentUserId = userId;
 }
 
+/**
+ * Clear identity on logout. Future events fall back to the anonymous distinctId.
+ */
 export function reset() {
   currentUserId = undefined;
 }
@@ -185,7 +203,11 @@ export function flush() {
 export interface TrackInput {
   event: string;
   onScreen?: string;
-  properties?: Record<string, unknown>; // extra/custom fields — merged in, e.g. { buttonId, meta: {...} }
+  /**
+   * Additional data to send with this specific event (e.g. { buttonId, meta: {...} }).
+   * Merged on top of auto-collected properties and config.defaultProperties.
+   */
+  properties?: Record<string, unknown>;
 }
 
 export function track(input: TrackInput) {
@@ -200,7 +222,8 @@ export function track(input: TrackInput) {
     timestamp: eventTimestamp,
     properties: {
       ...auto,
-      ...input.properties, // custom fields override auto ones only if explicitly passed
+      ...config.defaultProperties, // global, set once at init (e.g. appVersion, environment)
+      ...input.properties,         // per-call, most specific — wins over both above
     },
   };
 
@@ -211,6 +234,9 @@ export function track(input: TrackInput) {
   }
 }
 
+/**
+ * Test-only escape hatch: reset all module state between test cases.
+ */
 export function __resetForTests() {
   config = null;
   eventQueue = [];
