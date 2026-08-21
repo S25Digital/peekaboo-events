@@ -1,90 +1,33 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from 'react';
+import { track, type TrackInput } from './core';
 
-type EventPayload = {
-  event: string;
-  component?: string;
-  data?: Record<string, any>;
-  timestamp?: number;
-  url?: string;
-};
-
-let trackingUrl: string | undefined = undefined;  // Default is undefined
-
-// Fallback to a default URL if not configured
-const defaultTrackingUrl = "https://your-backend.com/api/analytics"; 
-
-const eventQueue: EventPayload[] = [];
-
-const flushQueue = (queue: EventPayload[]) => {
-  const payload = JSON.stringify(queue);
-  const urlToUse = trackingUrl || defaultTrackingUrl; // Use the configured URL or default
-
-  if (navigator.sendBeacon) {
-    const blob = new Blob([payload], { type: "application/json" });
-    navigator.sendBeacon(urlToUse, blob);
-  } else {
-    fetch(urlToUse, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: payload,
-    });
-  }
-};
-
-const track = (event: EventPayload) => {
-  eventQueue.push({
-    ...event,
-    timestamp: Date.now(),
-    url: window?.location?.href,
-  });
-};
-
-const flush = () => {
-  if (eventQueue.length > 0) {
-    const copy = [...eventQueue];
-    eventQueue.length = 0;
-    flushQueue(copy);
-  }
-};
-
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", flush);
-  window.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flush();
-  });
-}
-
-export default function useAnalytics(componentName = "", config: { trackingUrl?: string } = {}) {
-  const [trackingUrlState, setTrackingUrlState] = useState(trackingUrl || defaultTrackingUrl);
+export default function useAnalytics(componentName = '') {
   const hasUnmounted = useRef(false);
+  // Keep the latest componentName available to the unmount effect's
+  // cleanup without putting componentName in its dependency array —
+  // otherwise a name change would tear down/re-run the effect and
+  // fire component_unmounted even though nothing actually unmounted.
+  const componentNameRef = useRef(componentName);
+  componentNameRef.current = componentName;
 
-  // Update the tracking URL if provided in the config
-  useEffect(() => {
-    if (config.trackingUrl) {
-      trackingUrl = config.trackingUrl;
-      setTrackingUrlState(config.trackingUrl);
-    }
-  }, [config]);
-
-  const trackEvent = (event: Omit<EventPayload, "component" | "timestamp" | "url">) => {
+  const trackEvent = (input: Omit<TrackInput, 'onScreen'> & { onScreen?: string }) => {
     track({
-      ...event,
-      component: componentName,
+      onScreen: componentName, // default to the current component name, still overridable per-call
+      ...input,
     });
   };
 
   useEffect(() => {
     return () => {
       if (!hasUnmounted.current) {
-        track({
-          event: "component_unmounted",
-          component: componentName,
-        });
-        flush();
+        track({ event: 'component_unmounted', onScreen: componentNameRef.current });
         hasUnmounted.current = true;
       }
     };
-  }, [componentName]);
+    // Intentionally empty: this effect should only run its cleanup on
+    // true unmount, not whenever componentName changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  return { trackEvent, trackingUrl: trackingUrlState };
+  return { trackEvent };
 }
