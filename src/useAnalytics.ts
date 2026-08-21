@@ -1,19 +1,20 @@
-import { useEffect, useRef } from "react";
-import { track, type EventPayload } from "./core";
+import { useEffect, useRef } from 'react';
+import { track, type TrackInput } from './core';
 
-export default function useAnalytics(componentName = "") {
+export default function useAnalytics(componentName = '') {
   const hasUnmounted = useRef(false);
 
-  const trackEvent = (
-    event: Omit<EventPayload, "component" | "timestamp" | "url" | "userId" | "anonymousId">
-  ) => {
-    track({ ...event, component: componentName });
+  const trackEvent = (input: Omit<TrackInput, 'onScreen'> & { onScreen?: string }) => {
+    track({
+      onScreen: componentName, // default to the component name, still overridable per-call
+      ...input,
+    });
   };
 
   useEffect(() => {
     return () => {
       if (!hasUnmounted.current) {
-        track({ event: "component_unmounted", component: componentName });
+        track({ event: 'component_unmounted', onScreen: componentName });
         hasUnmounted.current = true;
       }
     };
