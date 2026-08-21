@@ -118,6 +118,34 @@ reset();
 
 Once identified, `distinctId` reflects the known user ID instead of the anonymous one.
 
+## Middleware
+
+Register middlewares to inspect, transform, or veto events before they're queued. Middlewares run in registration order — the output of one feeds into the next.
+
+```tsx
+import { addMiddleware } from 'peekaboo-events';
+
+// consent gate — drop events until the user accepts tracking
+addMiddleware((event) => (hasUserConsented() ? event : null));
+
+// scrub sensitive fields before they ever leave the browser
+addMiddleware((event) => {
+  delete event.properties.email;
+  return event;
+});
+
+// dev-only logging, doesn't affect what's sent
+addMiddleware((event) => {
+  if (process.env.NODE_ENV === 'development') console.log('[peekaboo]', event);
+  return event;
+});
+```
+
+- Return the event (modified or not) to let it continue to the next middleware and eventually the queue.
+- Return `null` to drop the event entirely — no further middlewares run, and nothing is queued.
+- If a middleware throws, only that event is dropped; tracking continues normally for subsequent events.
+- Middlewares can be registered any time — via `addMiddleware()` directly, or up front through `initAnalytics({ middlewares: [...] })`.
+
 ## How it works
 
 1. **Batching**: Events are queued in memory and flushed together, not sent one-by-one.
@@ -168,6 +196,7 @@ Fields collected automatically: `uuid`, `timestamp`, `deviceType`, `browser`, `b
 | `reset()` | Clears identity; future events fall back to the anonymous `distinctId`. |
 | `track(input)` | Low-level, framework-agnostic event tracking — use outside React if needed. |
 | `flush()` | Manually force an immediate flush of the queue. |
+| `addMiddleware(fn)` | Register a middleware to inspect, transform, or veto events before they're queued. |
 
 ### `initAnalytics` config
 
