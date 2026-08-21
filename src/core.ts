@@ -178,7 +178,7 @@ export function initAnalytics(cfg: AnalyticsConfig) {
  * middlewares that depend on runtime state (e.g. a consent flag that
  * flips after the user accepts a cookie banner).
  */
-export function use(middleware: Middleware) {
+export function addMiddleware(middleware: Middleware) {
   middlewares.push(middleware);
 }
 
