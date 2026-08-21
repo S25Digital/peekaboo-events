@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import useAnalytics from './useAnalytics';
+import useAnalytics from '../src/useAnalytics';
 
 // Mock the core module so these tests verify the hook's behavior
 // (default onScreen, override, unmount-once) without depending on
 // the real queue/flush/network logic — that's covered in core.test.ts.
-vi.mock('./core', () => ({
+vi.mock('../src/core', () => ({
   track: vi.fn(),
 }));
 
-import { track } from './core';
+import { track } from '../src/core';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,20 +71,18 @@ describe('useAnalytics', () => {
     });
   });
 
-  it('does not fire component_unmounted again if componentName changes before unmount', () => {
+  it('does not fire component_unmounted when componentName changes, only on true unmount', () => {
     const { rerender, unmount } = renderHook(
       ({ name }: { name: string }) => useAnalytics(name),
       { initialProps: { name: 'ScreenA' } }
     );
 
     rerender({ name: 'ScreenB' });
-    // effect cleanup/re-run happens on componentName change (it's in the dep array),
-    // so unmounted fires once for ScreenA's cleanup here
-    expect(track).toHaveBeenCalledWith({ event: 'component_unmounted', onScreen: 'ScreenA' });
+    // a name change is not an unmount — no event should fire yet
+    expect(track).not.toHaveBeenCalled();
 
-    vi.clearAllMocks();
     unmount();
-    // and once more for ScreenB's cleanup on actual unmount
+    // uses the latest known name (ScreenB) at the time of actual unmount
     expect(track).toHaveBeenCalledTimes(1);
     expect(track).toHaveBeenCalledWith({ event: 'component_unmounted', onScreen: 'ScreenB' });
   });
