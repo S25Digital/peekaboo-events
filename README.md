@@ -1,10 +1,8 @@
 # Peekaboo Events
 
-Peekaboo Events is a lightweight, non-blocking analytics hook for React that leverages `sendBeacon` to send event data to your backend. It's designed to track component lifecycle events and custom analytics without affecting the user experience.
+Peekaboo Events is a lightweight, non-blocking analytics library for React. It batches events and flushes them via `sendBeacon` (with a `fetch` fallback), so tracking never blocks the UI or affects user experience. Configure it once, then use the `useAnalytics` hook anywhere in your component tree.
 
 ## Installation
-
-To install `peekaboo-events` in your React project, run the following command:
 
 ```bash
 npm install peekaboo-events
@@ -16,91 +14,119 @@ or using Yarn:
 yarn add peekaboo-events
 ```
 
-## Usage
+## Setup
 
-To use the `useAnalytics` hook in your React components, simply import it and start tracking events.
-
-### Example
+Call `initAnalytics` **once**, at your app's entry point, before any component tries to track events.
 
 ```tsx
-import React, { useEffect } from 'react';
+// main.tsx / App.tsx
+import { initAnalytics } from 'peekaboo-events';
+
+initAnalytics({
+  trackingUrl: 'https://my-backend.com/api/analytics',
+  instanceId: 'your-tenant-id', // identifies this instance to your backend
+  flushIntervalMs: 5000,        // optional, default 5000
+  maxQueueSize: 20,             // optional, default 20
+});
+```
+
+Events tracked before `initAnalytics` runs are dropped — make sure this call happens early (e.g. before your router mounts).
+
+## Usage
+
+```tsx
 import { useAnalytics } from 'peekaboo-events';
 
 const MyComponent = () => {
-  const { trackEvent, trackingUrl } = useAnalytics("MyComponent", {
-    trackingUrl: "https://my-custom-backend.com/api/analytics"  // Dynamically set tracking URL
-  });
-
-  useEffect(() => {
-    trackEvent({ event: "component_mounted" });
-
-    return () => {
-      trackEvent({ event: "component_unmounted" });
-    };
-  }, [trackEvent]);
+  const { trackEvent } = useAnalytics('MyComponent');
 
   return (
-    <div>
-      Welcome to My Component!
-      <br />
-      Current Tracking URL: {trackingUrl}
-    </div>
+    <button onClick={() => trackEvent({ event: 'button_clicked', data: { buttonId: 'submit' } })}>
+      Submit
+    </button>
   );
 };
 
 export default MyComponent;
 ```
 
-### Custom Event Tracking
+### Automatic lifecycle tracking
 
-You can track custom events by calling `trackEvent` with your desired event name and data.
+The hook automatically fires a `component_unmounted` event when the component unmounts — you don't need to call `trackEvent` manually for this.
+
+### Custom events
 
 ```tsx
 trackEvent({
-  event: "button_clicked",
-  data: { buttonId: "submit" }
+  event: 'form_submitted',
+  data: { formId: 'signup', plan: 'pro' },
 });
 ```
 
-## How It Works
+## Identifying users
 
-1. **Automatic Event Tracking**: The hook automatically tracks when the component is mounted and unmounted.
-2. **Non-blocking**: It uses the `sendBeacon` API to send data to your backend without blocking the UI or affecting user experience.
-3. **Custom Events**: You can manually track any custom events by calling `trackEvent` with the event details.
-4. **Configurable Tracking URL**: You can configure the tracking URL for event data. If not set, it will use the default URL provided in the hook.
-
-### Configuring the Tracking URL
-
-The `useAnalytics` hook accepts an optional configuration object, allowing you to set the tracking URL dynamically.
+By default, events are attributed to an auto-generated, persisted `anonymousId` (stored in `localStorage`). Once you know who the user is, call `identify`:
 
 ```tsx
-const { trackEvent, trackingUrl } = useAnalytics("MyComponent", {
-  trackingUrl: "https://my-custom-backend.com/api/analytics"  // Pass custom URL
-});
+import { identify, reset } from 'peekaboo-events';
+
+// after login
+identify(user.id);
+
+// after logout
+reset();
 ```
 
-The tracking URL can also be set globally, making it flexible to switch between different backends or endpoints.
+Once identified, events carry `userId` instead of `anonymousId`.
 
-## Backend Integration
+## How it works
 
-This package is designed to send event data to your backend for persistence. By default, it sends events to the URL defined in the `trackingUrl`. You can override this URL using the configuration.
+1. **Batching**: Events are queued in memory and flushed together, not sent one-by-one.
+2. **Flush triggers**: The queue flushes automatically on an interval (`flushIntervalMs`), when it hits `maxQueueSize`, when the tab is hidden, and on `beforeunload`.
+3. **Non-blocking delivery**: Flushes use `navigator.sendBeacon` where available; if the beacon fails or isn't supported, it falls back to `fetch` with `keepalive: true`.
+4. **Automatic metadata**: Every event gets a `timestamp`, the current `url`, and either `userId` or `anonymousId` attached automatically.
+5. **Lifecycle tracking**: `component_unmounted` fires automatically per hook instance.
 
-```ts
-const TRACKING_URL = "https://your-backend.com/api/analytics"; // Default URL
+## API reference
+
+| Export | Description |
+|---|---|
+| `initAnalytics(config)` | Configures the tracking URL, instance ID, and flush behavior. Call once at bootstrap. |
+| `useAnalytics(componentName)` | React hook. Returns `{ trackEvent }` scoped to the given component name. |
+| `identify(userId)` | Associates future events with a known user. |
+| `reset()` | Clears identity; future events fall back to the anonymous ID. |
+| `track(event)` | Low-level, framework-agnostic event tracking — use outside React if needed. |
+| `flush()` | Manually force an immediate flush of the queue. |
+
+### `initAnalytics` config
+
+| Option | Type | Required | Default |
+|---|---|---|---|
+| `trackingUrl` | `string` | Yes | — |
+| `instanceId` | `string` | Yes | — |
+| `flushIntervalMs` | `number` | No | `5000` |
+| `maxQueueSize` | `number` | No | `20` |
+
+## Backend integration
+
+Each flush POSTs a single JSON body to `trackingUrl`:
+
+```json
+{
+  "instanceId": "your-tenant-id",
+  "events": [
+    { "event": "component_mounted", "component": "MyComponent", "timestamp": 1234567890, "url": "...", "anonymousId": "..." }
+  ]
+}
 ```
 
-## Notes
+Your backend can use `instanceId` to route each batch to the correct downstream provider (e.g. CleverTap, Adobe) with the correct per-tenant credentials.
 
-- The package uses the `sendBeacon` API for non-blocking background requests, making it suitable for tracking events without interrupting the user experience.
-- The `trackEvent` function adds metadata to each event, including the component name and a timestamp, which can be useful for debugging or analysis.
-  
-## Files Included
+## Files included
 
-The package includes the following files:
-
-- **`src/`**: The source code for the package, including the `useAnalytics` hook.
-- **`dist/`**: The compiled and minified output for distribution.
-- **`package.json`**: The package metadata and build scripts.
+- **`src/`**: Source code — `core.ts` (framework-agnostic queueing/flush logic) and `useAnalytics.ts` (the React hook).
+- **`dist/`**: Compiled output for distribution.
+- **`package.json`**: Package metadata and build scripts.
 
 ## Contributing
 
