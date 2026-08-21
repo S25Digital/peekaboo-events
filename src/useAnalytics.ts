@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-type EventPayload = {
+export type EventPayload = {
   event: string;
   component?: string;
   data?: Record<string, unknown>;
