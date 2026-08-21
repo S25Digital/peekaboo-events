@@ -6,7 +6,7 @@ import {
   track,
   flush,
   __resetForTests,
-} from './core';
+} from '../src/core';
 
 const TRACKING_URL = 'https://backend.test/api/analytics';
 
