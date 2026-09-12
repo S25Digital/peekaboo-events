@@ -37,18 +37,20 @@ export interface AnalyticsConfig {
   trackingUrl: string;
   instanceId: string;
   /**
-   * Opaque encrypted identifier string issued by your backend.
-   * Sent as-is with every event in `properties.key`. Not generated
-   * or interpreted client-side — treat it as an unreadable token.
+   * Session-level properties: any fields here are automatically added to every event.
+   * Use this to attach session identifiers, environment, version, or other metadata
+   * that should be present on all events from this initialization.
+   * Example: { sessionKey: 'abc123', environment: 'production', appVersion: '2.0' }
+   * Per-call properties override session properties if the same key is used.
    */
-  key: string;
+  sessionProperties?: Record<string, unknown>;
   flushIntervalMs?: number;
   maxQueueSize?: number;
   /**
-   * Properties merged into every tracked event automatically
-   * (e.g. appVersion, environment, buildNumber). Per-call
-   * `properties` passed to `track()` take precedence over these
-   * if the same key is used in both.
+   * Default properties merged into every tracked event automatically.
+   * Useful for data that may change or be conditional.
+   * Per-call properties override defaults if the same key is used.
+   * Merge order: sessionProperties → defaultProperties → per-call properties
    */
   defaultProperties?: Record<string, unknown>;
   /**
@@ -148,7 +150,6 @@ function collectAutoProperties(onScreen?: string): AnalyticsProperties {
     osVersion: ua?.os?.version,
     screenWidth: typeof window !== 'undefined' ? window.screen?.width : undefined,
     timestamp: new Date().toISOString(),
-    key: config?.key,
     onScreen,
   };
 }
@@ -200,25 +201,39 @@ function sendBatch(batch: TrackedEvent[]) {
   if (!config) return;
 
   const payload = JSON.stringify({ instanceId: config.instanceId, events: batch });
+  const trackingUrl = config.trackingUrl;
 
+  // Use sendBeacon - it's non-blocking and designed for analytics
+  // Send as plain Blob (no type) to avoid triggering CORS preflight
   if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
-    const blob = new Blob([payload], { type: 'application/json' });
-    const ok = navigator.sendBeacon(config.trackingUrl, blob);
-    if (!ok) {
-      fetch(config.trackingUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        keepalive: true,
-      }).catch(() => {});
+    try {
+      // Create Blob WITHOUT type to avoid CORS preflight
+      const blob = new Blob([payload]);
+      const success = navigator.sendBeacon(trackingUrl, blob);
+      if (success) {
+        console.debug('[peekaboo-events] sendBeacon succeeded');
+      } else {
+        console.debug('[peekaboo-events] sendBeacon returned false');
+      }
+      return;
+    } catch (err) {
+      console.debug('[peekaboo-events] sendBeacon error:', err instanceof Error ? err.message : String(err));
+      return;
     }
-  } else {
-    fetch(config.trackingUrl, {
+  }
+
+  // Fallback for browsers without sendBeacon (very rare)
+  try {
+    fetch(trackingUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: payload,
+      credentials: 'omit',
       keepalive: true,
-    }).catch(() => {});
+    }).catch(() => {
+      // Silent fail
+    });
+  } catch (err) {
+    // Fail silently
   }
 }
 
@@ -267,8 +282,9 @@ export function track(input: TrackInput) {
     timestamp: eventTimestamp,
     properties: {
       ...auto,
-      ...config.defaultProperties, // global, set once at init (e.g. appVersion, environment)
-      ...input.properties,         // per-call, most specific — wins over both above
+      ...config.sessionProperties,  // session-level, set once at init (e.g. sessionKey, environment)
+      ...config.defaultProperties,  // defaults, set once at init (e.g. appVersion)
+      ...input.properties,          // per-call, most specific — wins over all above
     },
   };
 

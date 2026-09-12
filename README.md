@@ -2,6 +2,20 @@
 
 Peekaboo Events is a lightweight, non-blocking analytics library for React. It batches events, enriches them automatically with device/browser/session context, and flushes them via `sendBeacon` (with a `fetch` fallback) — so tracking never blocks the UI or affects user experience.
 
+## 📖 Documentation Guide
+
+**Start here:**
+
+| Your Goal | Read This |
+|-----------|-----------|
+| **I'm using this package** | [CONSUMER_GUIDE.md](./docs/CONSUMER_GUIDE.md) ⭐ — Setup, auth, patterns, production checklist |
+| **Try it out quickly** | [DEMO_SETUP.md](./docs/DEMO_SETUP.md) — Run the demo in 2 minutes |
+| **Understand how it works** | [ARCHITECTURE.md](./docs/ARCHITECTURE.md) — Data flow, merge order, lifecycle |
+| **Debug CORS errors** | [CORS_TROUBLESHOOTING.md](./docs/CORS_TROUBLESHOOTING.md) — DevTools debugging guide |
+| **API reference** | This README (scroll down) |
+
+---
+
 ## Installation
 
 ```bash
@@ -27,13 +41,16 @@ import { initAnalytics } from 'peekaboo-events';
 initAnalytics({
   trackingUrl: 'https://my-backend.com/api/analytics',
   instanceId: 'your-tenant-id',       // identifies this instance to your backend
-  key: 'encrypted-identifier-string', // opaque identifier string issued by your backend
-  flushIntervalMs: 5000,              // optional, default 5000
-  maxQueueSize: 20,                   // optional, default 20
-  defaultProperties: {                // optional, merged into every event automatically
+  sessionProperties: {                // optional, session-level properties added to every event
+    sessionKey: 'abc-123',
+    userId: 'user@example.com',
+  },
+  defaultProperties: {                // optional, default properties for every event
     appVersion: '2.4.1',
     environment: 'production',
   },
+  flushIntervalMs: 5000,              // optional, default 5000
+  maxQueueSize: 20,                   // optional, default 20
 });
 ```
 
@@ -200,14 +217,15 @@ Fields collected automatically: `uuid`, `timestamp`, `deviceType`, `browser`, `b
 
 ### `initAnalytics` config
 
-| Option | Type | Required | Default |
-|---|---|---|---|
-| `trackingUrl` | `string` | Yes | — |
-| `instanceId` | `string` | Yes | — |
-| `key` | `string` | Yes | — |
-| `flushIntervalMs` | `number` | No | `5000` |
-| `maxQueueSize` | `number` | No | `20` |
-| `defaultProperties` | `Record<string, unknown>` | No | `undefined` |
+| Option | Type | Required | Default | Purpose |
+|---|---|---|---|---|
+| `trackingUrl` | `string` | Yes | — | Endpoint that receives event batches |
+| `instanceId` | `string` | Yes | — | Identifies this app instance (sent separately, not in events) |
+| `sessionProperties` | `Record<string, unknown>` | No | `undefined` | Session-level data added to every event (e.g., sessionKey, userId) |
+| `defaultProperties` | `Record<string, unknown>` | No | `undefined` | Default data merged into every event (e.g., appVersion) |
+| `flushIntervalMs` | `number` | No | `5000` | How often to send queued events (milliseconds) |
+| `maxQueueSize` | `number` | No | `20` | Send immediately when queue reaches this size |
+| `middlewares` | `Middleware[]` | No | `undefined` | Event processors/filters (run before queueing) |
 
 ## Backend integration
 
@@ -227,6 +245,16 @@ Your backend can use `instanceId` to route each batch to the correct downstream 
 - **`src/`**: Source code — `core.ts` (framework-agnostic queueing, enrichment, and flush logic) and `useAnalytics.ts` (the React hook).
 - **`dist/`**: Compiled output for distribution.
 - **`package.json`**: Package metadata and build scripts.
+
+## 📚 Documentation
+
+- **[CONSUMER_GUIDE.md](./CONSUMER_GUIDE.md)** — Complete guide (setup, auth, patterns, security, production)
+- **[ARCHITECTURE.md](./ARCHITECTURE.md)** — Technical details (data flow, lifecycle, design decisions)
+- **[DEMO_SETUP.md](./DEMO_SETUP.md)** — Quick demo walkthrough
+- **[CORS_TROUBLESHOOTING.md](./CORS_TROUBLESHOOTING.md)** — Debugging CORS issues
+- **[examples/README.md](./examples/README.md)** — Example implementations and auth patterns
+
+---
 
 ## Contributing
 
